@@ -1,4 +1,40 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+function trimTrailingSlashes (value) {
+  if (!value) return '';
+
+  let result = `${value}`.trim();
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+  return result;
+}
+
+function normalizeBaseUrl (url) {
+  if (!url) return '';
+
+  const trimmed = trimTrailingSlashes(url);
+
+  try {
+    const parsed = new URL(trimmed);
+    let pathname = trimTrailingSlashes(parsed.pathname);
+
+    if (pathname === '/api' || pathname === 'api') {
+      pathname = '';
+    }
+
+    return `${parsed.origin}${pathname}`;
+  } catch (error) {
+    return trimmed;
+  }
+}
+
+const API_BASE_URL = normalizeBaseUrl(RAW_API_URL);
+
+function buildRequestUrl (path = '') {
+  const sanitizedPath = path.startsWith('/') ? path : `/${path}`;
+  return new URL(sanitizedPath, `${API_BASE_URL}/`).toString();
+}
 
 async function request (path, { method = 'GET', token, body, headers = {} } = {}) {
   const options = { method, headers: { ...headers } };
@@ -14,7 +50,7 @@ async function request (path, { method = 'GET', token, body, headers = {} } = {}
     options.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${path}`, options);
+  const response = await fetch(buildRequestUrl(path), options);
   const contentType = response.headers.get('content-type') || '';
   const isJson = contentType.includes('application/json');
   const payload = isJson ? await response.json() : null;
@@ -53,14 +89,22 @@ const api = {
     if (token) {
       params.set('token', token);
     }
-    return `${API_URL}/api/videos/${id}/stream?${params.toString()}`;
+    const url = new URL(buildRequestUrl(`/api/videos/${id}/stream`));
+    for (const [key, value] of params.entries()) {
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
   },
   getThumbnailUrl: (id, token) => {
     const params = new URLSearchParams();
     if (token) {
       params.set('token', token);
     }
-    return `${API_URL}/api/videos/${id}/thumbnail?${params.toString()}`;
+    const url = new URL(buildRequestUrl(`/api/videos/${id}/thumbnail`));
+    for (const [key, value] of params.entries()) {
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
   }
 };
 
