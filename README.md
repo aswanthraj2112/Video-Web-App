@@ -109,10 +109,12 @@ MAX_UPLOAD_SIZE_MB=500
 
 ### Client `.env`
 ```env
-VITE_API_URL=http://localhost:4000/api
+VITE_API_URL=http://localhost:4000
 VITE_STREAMING_URL=http://localhost:4000/stream
 VITE_CHUNK_SIZE_MB=5
 ```
+
+> **Note:** The frontend automatically prefixes API requests with `/api/…`. Supplying a base URL that already ends with `/api` will cause requests like `/api/api/auth/login`, which the server rejects with "Route not found" errors during login.
 
 ---
 
