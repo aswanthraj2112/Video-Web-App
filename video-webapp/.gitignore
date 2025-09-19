@@ -1,0 +1,12 @@
+node_modules
+pnpm-lock.yaml
+yarn.lock
+dist
+.env
+server/.env
+client/.env
+server/data.sqlite
+.DS_Store
+npm-debug.log*
+.idea
+.vscode
