@@ -19,9 +19,9 @@
 +  - [File Storage Locations](#file-storage-locations)
 +- [Troubleshooting](#troubleshooting)
 +
-+## Prerequisites
-+Ensure the following software is installed before working with the project:
-+
+## Prerequisites
+Ensure the following software is installed before working with the project:
+
 +| Tool | Version | Notes |
 +| ---- | ------- | ----- |
 +| Node.js | **18.x** or higher | Required for both server and client builds. Install via [Node Version Manager (nvm)](https://github.com/nvm-sh/nvm) or the official installer.
@@ -29,8 +29,8 @@
 +| FFmpeg | Latest stable | Used for generating thumbnails and video transcodes. Confirm with `ffmpeg -version`.
 +| Git | Latest | Required to clone and manage repository changes.
 +| Database (PostgreSQL, MySQL, or SQLite) | Local instance | The app uses the `DATABASE_URL` environment variable; PostgreSQL is assumed in the examples below.
-+
-+## Project Structure
+
+## Project Structure
 
 +```
 +Video-Web-App/
