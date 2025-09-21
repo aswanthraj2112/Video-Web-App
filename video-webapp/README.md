@@ -39,6 +39,13 @@ sudo apt-get install ffmpeg
 
 The root `npm run dev` script launches the Express API (port 4000 by default) and the Vite dev server (port 5173) concurrently. The backend serves uploaded videos and thumbnails from `server/src/public`.
 
+## Running with Docker
+
+Build and run backend + frontend locally:
+```bash
+docker-compose up --build
+
+
 ## Usage
 - Register a user via `POST /api/auth/register` or the UI login form.
 - Upload a video from the dashboard. The server probes metadata, stores the original file under `server/src/public/videos`, and generates a thumbnail in `server/src/public/thumbs`.
