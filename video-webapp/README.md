@@ -47,6 +47,50 @@ docker-compose up --build
 
 ```
 
+Access:
+
+- Frontend → http://localhost
+
+- Backend API → http://localhost:4000
+
+## Deploying to AWS
+
+1. Create ECR repos for video-webapp-backend and video-webapp-frontend.
+
+2. Build, tag, and push images:
+```bash
+docker build -t video-webapp-backend ./server
+docker tag video-webapp-backend:latest <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
+docker push <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
+
+docker build -t video-webapp-frontend ./client
+docker tag video-webapp-frontend:latest <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
+docker push <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
+```
+
+3. On EC2, pull and run:
+```bash
+docker pull <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
+docker run -d -p 4000:4000 video-webapp-backend
+
+docker pull <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
+docker run -d -p 80:80 video-webapp-frontend
+
+```
+Now app is live at http://<ec2-public-ip>.
+
+
+---yaml
+
+# What To Do Next
+
+1. Copy these files into your repo.  
+2. Test locally with `docker-compose up`.  
+3. Push both images to AWS ECR.  
+4. Run them on EC2.  
+
+---
+
 ## Usage
 - Register a user via `POST /api/auth/register` or the UI login form.
 - Upload a video from the dashboard. The server probes metadata, stores the original file under `server/src/public/videos`, and generates a thumbnail in `server/src/public/thumbs`.
