@@ -45,6 +45,7 @@ Build and run backend + frontend locally:
 ```bash
 docker-compose up --build
 
+```
 
 ## Usage
 - Register a user via `POST /api/auth/register` or the UI login form.
