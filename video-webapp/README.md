@@ -65,3 +65,44 @@ Create accounts directly via the UI login form (switch to Register tab) or issue
 - `npm run build` (client): build production-ready frontend assets
 
 Enjoy building locally without any cloud dependencies!
+
+
+
+```bash
+
+npm install
+
+````
+
+```bash
+
+sudo apt-get update
+sudo apt-get install ffmpeg
+
+```
+To change your web app to transcode videos into 1080p instead of 720p, you need to update the ffmpeg command in your backend code to use 1080p settings.
+
+In your project, the relevant code is likely in server/src/videos/video.service.js. Look for where ffmpeg is called to transcode videos (it may use .size('1280x720') or similar for 720p).
+
+Change the resolution to 1920x1080 for 1080p. For example:
+
+
+
+The transcoding resolution is set by the ffmpeg option:
+
+```bash
+
+'-vf scale=1280:-2',
+
+```
+
+This means the video is scaled to 1280 pixels wide (720p). To transcode to 1080p, change this line to:
+
+```bash
+
+'-vf scale=1920:-2',
+
+```
+
+This will scale the video to 1920 pixels wide (1080p).
+
