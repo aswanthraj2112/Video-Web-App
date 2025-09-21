@@ -80,9 +80,9 @@ docker run -d -p 80:80 video-webapp-frontend
 Now app is live at http://<ec2-public-ip>.
 
 
----yaml
+---
 
-# What To Do Next
+### What To Do Next
 
 1. Copy these files into your repo.  
 2. Test locally with `docker-compose up`.  
