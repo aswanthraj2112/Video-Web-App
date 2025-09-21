@@ -77,7 +77,7 @@ docker pull <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend
 docker run -d -p 80:80 video-webapp-frontend
 
 ```
-Now app is live at http://<ec2-public-ip>.
+Now app is live at `http://<ec2-public-ip>`.
 
 
 ---
