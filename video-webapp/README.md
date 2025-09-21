@@ -28,6 +28,14 @@ A local-first video management web application with an Express/SQLite backend an
    cd ..
    npm run dev
    ```
+5. **Other Essentials**
+```bash
+npm install
+````
+```bash
+sudo apt-get update
+sudo apt-get install ffmpeg
+```
 
 The root `npm run dev` script launches the Express API (port 4000 by default) and the Vite dev server (port 5173) concurrently. The backend serves uploaded videos and thumbnails from `server/src/public`.
 
@@ -66,20 +74,8 @@ Create accounts directly via the UI login form (switch to Register tab) or issue
 
 Enjoy building locally without any cloud dependencies!
 
+## 
 
-
-```bash
-
-npm install
-
-````
-
-```bash
-
-sudo apt-get update
-sudo apt-get install ffmpeg
-
-```
 To change your web app to transcode videos into 1080p instead of 720p, you need to update the ffmpeg command in your backend code to use 1080p settings.
 
 In your project, the relevant code is likely in server/src/videos/video.service.js. Look for where ffmpeg is called to transcode videos (it may use .size('1280x720') or similar for 720p).
