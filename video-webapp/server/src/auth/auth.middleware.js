@@ -22,7 +22,7 @@ const authMiddleware = (req, res, next) => {
       username: payload.username
     };
     return next();
-  } catch (error) {
+  } catch {
     return next(new AuthenticationError('Invalid or expired token'));
   }
 };

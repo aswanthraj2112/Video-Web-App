@@ -24,7 +24,7 @@ function normalizeBaseUrl (url) {
     }
 
     return `${parsed.origin}${pathname}`;
-  } catch (error) {
+  } catch {
     return trimmed;
   }
 }
