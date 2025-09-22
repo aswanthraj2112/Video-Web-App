@@ -133,7 +133,7 @@ export async function getVideoFile (video, variant = 'original') {
   let stats;
   try {
     stats = await fs.stat(filePath);
-  } catch (error) {
+  } catch {
     if (useTranscoded) {
       throw new AppError('Transcoded file not yet available', 409, 'TRANSCODE_PENDING');
     }
@@ -186,7 +186,7 @@ export async function transcodeVideo (video, preset = '720p') {
   const inputPath = path.join(config.PUBLIC_VIDEOS_DIR, video.storedFilename);
   try {
     await fs.access(inputPath);
-  } catch (error) {
+  } catch {
     throw new NotFoundError('Original video file missing');
   }
 
