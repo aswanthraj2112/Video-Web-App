@@ -262,6 +262,11 @@ body {
   color: inherit;
 }
 
+.player-body .error {
+  color: var(--danger);
+  margin-top: 0.5rem;
+}
+
 .video-player {
   width: 100%;
   border-radius: 0.75rem;

@@ -1,22 +1,38 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import config from './config.js';
-import { initDb } from './db.js';
+import { loadConfig, getConfig } from './config.js';
 import authRoutes from './auth/auth.routes.js';
 import videoRoutes from './videos/video.routes.js';
 import { errorHandler, NotFoundError } from './utils/errors.js';
-import { ensureStorageDirs } from './videos/video.controller.js';
+
+await loadConfig();
+const config = getConfig();
 
 const app = express();
 
-app.use(cors({ origin: config.CLIENT_ORIGIN }));
+const allowedOrigins = new Set(config.CLIENT_ORIGINS);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Length', 'Content-Range']
+}));
+
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', region: config.AWS_REGION });
 });
 
 app.use('/api/auth', authRoutes);
@@ -29,10 +45,8 @@ app.use((req, res, next) => {
 app.use(errorHandler);
 
 const start = async () => {
-  await ensureStorageDirs();
-  await initDb();
   app.listen(config.PORT, () => {
-    console.log(`Server listening on http://localhost:${config.PORT}`);
+    console.log(`Server listening on port ${config.PORT}`);
   });
 };
 

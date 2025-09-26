@@ -64,10 +64,6 @@ async function request (path, { method = 'GET', token, body, headers = {} } = {}
 }
 
 const api = {
-  register: (username, password) =>
-    request('/api/auth/register', { method: 'POST', body: { username, password } }),
-  login: (username, password) =>
-    request('/api/auth/login', { method: 'POST', body: { username, password } }),
   getMe: (token) => request('/api/auth/me', { token }),
   uploadVideo: (token, file) => {
     const formData = new FormData();
@@ -80,31 +76,11 @@ const api = {
   requestTranscode: (token, id, preset = '720p') =>
     request(`/api/videos/${id}/transcode`, { method: 'POST', token, body: { preset } }),
   deleteVideo: (token, id) => request(`/api/videos/${id}`, { method: 'DELETE', token }),
-  getStreamUrl: (id, token, variant = 'original', download = false) => {
+  getPresignedUrl: (token, id, { variant = 'original', download = true } = {}) => {
     const params = new URLSearchParams();
-    params.set('variant', variant);
-    if (download) {
-      params.set('download', '1');
-    }
-    if (token) {
-      params.set('token', token);
-    }
-    const url = new URL(buildRequestUrl(`/api/videos/${id}/stream`));
-    for (const [key, value] of params.entries()) {
-      url.searchParams.set(key, value);
-    }
-    return url.toString();
-  },
-  getThumbnailUrl: (id, token) => {
-    const params = new URLSearchParams();
-    if (token) {
-      params.set('token', token);
-    }
-    const url = new URL(buildRequestUrl(`/api/videos/${id}/thumbnail`));
-    for (const [key, value] of params.entries()) {
-      url.searchParams.set(key, value);
-    }
-    return url.toString();
+    if (variant) params.set('variant', variant);
+    if (download != null) params.set('download', download ? '1' : '0');
+    return request(`/api/videos/${id}/presigned?${params.toString()}`, { token });
   }
 };
 

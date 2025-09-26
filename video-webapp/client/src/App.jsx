@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchAuthSession, signOut as cognitoSignOut } from 'aws-amplify/auth';
 import NavBar from './components/NavBar.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -9,9 +10,9 @@ export const ToastContext = createContext(() => {});
 export const useToast = () => React.useContext(ToastContext);
 
 function App () {
-  const [token, setToken] = useState(() => window.localStorage.getItem('jwt') || '');
+  const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
-  const [loadingUser, setLoadingUser] = useState(Boolean(token));
+  const [loadingUser, setLoadingUser] = useState(true);
   const [toast, setToast] = useState(null);
 
   const notify = useCallback((message, type = 'info') => {
@@ -19,51 +20,67 @@ function App () {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
+  const refreshSession = useCallback(async () => {
+    try {
+      const session = await fetchAuthSession();
+      const tokens = session.tokens;
+      const idToken = tokens?.idToken?.toString() || '';
+      if (!idToken) {
+        setToken('');
+        setUser(null);
+        return;
+      }
+      const { user: profile } = await api.getMe(idToken);
+      setToken(idToken);
+      setUser({
+        ...profile,
+        idToken
+      });
+    } catch (error) {
+      console.warn('Failed to refresh session', error);
+      setToken('');
+      setUser(null);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    if (!token) {
-      setLoadingUser(false);
-      return;
-    }
-    setLoadingUser(true);
-    api
-      .getMe(token)
-      .then(({ user: fetched }) => {
-        if (!cancelled) {
-          setUser(fetched);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          notify('Session expired. Please log in again.', 'error');
-          setToken('');
-          window.localStorage.removeItem('jwt');
-          setUser(null);
-        }
-      })
-      .finally(() => {
+    const load = async () => {
+      setLoadingUser(true);
+      try {
+        await refreshSession();
+      } finally {
         if (!cancelled) {
           setLoadingUser(false);
         }
-      });
+      }
+    };
+    load();
     return () => {
       cancelled = true;
     };
-  }, [token, notify]);
+  }, [refreshSession]);
 
-  const handleAuthenticated = (jwt, userData) => {
-    window.localStorage.setItem('jwt', jwt);
-    setToken(jwt);
-    setUser(userData);
-    notify(`Welcome back, ${userData.username}!`, 'success');
-  };
+  const handleAuthenticated = useCallback(async () => {
+    setLoadingUser(true);
+    try {
+      await refreshSession();
+      notify('Signed in successfully', 'success');
+    } finally {
+      setLoadingUser(false);
+    }
+  }, [refreshSession, notify]);
 
-  const handleLogout = () => {
-    window.localStorage.removeItem('jwt');
+  const handleLogout = useCallback(async () => {
+    try {
+      await cognitoSignOut();
+    } catch (error) {
+      console.warn('Sign-out failed', error);
+    }
     setToken('');
     setUser(null);
     notify('Logged out', 'info');
-  };
+  }, [notify]);
 
   const toastValue = useMemo(() => notify, [notify]);
 

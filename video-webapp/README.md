@@ -1,156 +1,210 @@
-# Video Web App
+# Cloud-Native Video Web App
 
-A local-first video management web application with an Express/SQLite backend and a React (Vite) frontend. Upload videos, generate thumbnails, trigger ffmpeg transcodes, and stream securely via JWT.
+Modernized video management platform with an Express API and a React frontend. All state is persisted in AWS services:
+
+- **Amazon S3** – raw uploads, thumbnails, and transcoded outputs
+- **Amazon DynamoDB** – video metadata (videoId/ownerId primary key)
+- **Amazon Cognito** – user authentication & JWT issuance
+- **AWS Systems Manager Parameter Store** – runtime configuration (bucket, table, region)
+- **AWS Secrets Manager** – ffmpeg tuning and other sensitive settings
+
+The UI authenticates with Cognito, uploads video files directly to the API (which streams to S3), triggers ffmpeg transcodes, and plays media through signed URLs.
+
+## Architecture Overview
+
+```
+React (Vite) SPA ──► Express API ──► S3 (raw/transcoded/thumbnails)
+       │                 │
+       │                 ├─► DynamoDB (VideoMetadata table)
+       │                 ├─► Parameter Store (S3 bucket / table / region)
+       │                 ├─► Secrets Manager (ffmpeg presets)
+       ▼                 └─► Cognito (JWT validation)
+Cognito Hosted UI / Amplify Auth
+```
 
 ## Prerequisites
+
 - Node.js 18+
 - npm 9+
-- [ffmpeg](https://ffmpeg.org/) installed and available on your `PATH`
+- `ffmpeg` available on your `$PATH`
+- AWS account with permissions to use S3, DynamoDB, Cognito, SSM Parameter Store, and Secrets Manager
+- AWS CLI configured locally (`aws configure`) or environment variables providing credentials when running in Docker/EC2
 
-## Getting Started
-1. **Install backend dependencies**
+## Required AWS Resources
+
+1. **S3 bucket** for video assets (e.g. `my-video-app-assets`). The app writes to the prefixes `raw-videos/`, `transcoded-videos/`, and `thumbnails/`.
+2. **DynamoDB table** `VideoMetadata` (partition key: `videoId`, sort key: `ownerId`). Add a global secondary index `OwnerIndex` with `ownerId` as the partition key and `createdAt` as the sort key for listing a user’s videos.
+3. **Cognito User Pool** and an **App Client** (no secret) for the SPA. Enable optional MFA if desired.
+4. **Parameter Store entries** (String, `WithDecryption=false`):
+   - `/video-app/prod/s3-bucket` → `my-video-app-assets`
+   - `/video-app/prod/dynamo-table` → `VideoMetadata`
+   - `/video-app/prod/region` → `us-east-1`
+5. **Secrets Manager secret** (JSON) for transcoding options. Example payload:
+   ```json
+   {
+     "transcodeOptions": [
+       "-c:v libx264",
+       "-preset fast",
+       "-crf 23",
+       "-vf scale=1280:-2",
+       "-c:a aac",
+       "-b:a 128k",
+       "-movflags +faststart"
+     ],
+     "thumbnailOptions": {
+       "timestamps": ["2"],
+       "size": "640x?"
+     }
+   }
+   ```
+
+Record the Parameter Store names and the secret ARN – they are referenced from environment variables.
+
+## Configuration Files
+
+Two sample environment files are included:
+
+- [`server/.env.example`](server/.env.example) – backend configuration (Cognito IDs, Parameter Store names, limits)
+- [`client/.env.example`](client/.env.example) – frontend configuration (API URL, Cognito details)
+
+Copy and edit them before running locally:
+
+```bash
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+```
+
+At minimum set:
+
+- `AWS_REGION` or `AWS_DEFAULT_REGION`
+- `PARAMETER_S3_BUCKET`, `PARAMETER_DYNAMO_TABLE`, `PARAMETER_REGION`
+- `SECRETS_TRANSCODE_OPTIONS`
+- `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`
+- `CLIENT_ORIGINS` (comma-separated list including your frontend origin, e.g. `https://myvideoapp.example.com`)
+- Frontend `.env`: `VITE_API_URL`, `VITE_AWS_REGION`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_APP_CLIENT_ID`
+
+## Running Locally
+
+1. **Install dependencies**
    ```bash
+   cd server && npm install
+   cd ../client && npm install
+   ```
+2. **Export AWS credentials** (or rely on your default AWS CLI profile). The backend requires access to S3, DynamoDB, SSM, and Secrets Manager.
+3. **Start the services**
+   ```bash
+   # Terminal 1 – backend
    cd server
-   npm install
-   ```
-2. **Configure environment and initialize the database**
-   ```bash
-   cp .env.example .env
-   npm run init-db
-   ```
-3. **Install frontend dependencies**
-   ```bash
-   cd ../client
-   npm install
-   ```
-4. **Run both apps together**
-   ```bash
-   cd ..
+   npm run dev
+
+   # Terminal 2 – frontend
+   cd client
    npm run dev
    ```
-5. **Other Essentials**
-```bash
-npm install
-````
-```bash
-sudo apt-get update
-sudo apt-get install ffmpeg
-```
+4. Browse to `http://localhost:5173` (default Vite dev server).
 
-The root `npm run dev` script launches the Express API (port 4000 by default) and the Vite dev server (port 5173) concurrently. The backend serves uploaded videos and thumbnails from `server/src/public`.
+The Express API listens on port `4000` by default. On startup it loads configuration from Parameter Store/Secrets Manager, verifies Cognito environment variables, and then responds to requests.
 
-## Running with Docker
+## Docker Compose (local testing)
 
-Build and run backend + frontend locally:
+`docker-compose.yml` now expects cloud-aware variables. Supply Cognito IDs and Parameter Store names before running:
+
 ```bash
+AWS_REGION=us-east-1 \
+PARAMETER_S3_BUCKET=/video-app/prod/s3-bucket \
+PARAMETER_DYNAMO_TABLE=/video-app/prod/dynamo-table \
+PARAMETER_REGION=/video-app/prod/region \
+SECRETS_TRANSCODE_OPTIONS=/video-app/prod/transcode \
+COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX \
+COGNITO_APP_CLIENT_ID=1h2jk3l456mnop7890qrstuvwx \
+CLIENT_ORIGINS=http://localhost:5173 \
+VITE_API_URL=http://localhost:4000 \
+VITE_AWS_REGION=us-east-1 \
+VITE_COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX \
+VITE_COGNITO_APP_CLIENT_ID=1h2jk3l456mnop7890qrstuvwx \
 docker-compose up --build
-
 ```
 
-Access:
+The containers use the supplied AWS credentials in the environment; mount `~/.aws` or provide `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` if running outside your workstation.
 
-- Frontend → http://localhost
+## Backend API Reference
 
-- Backend API → http://localhost:4000
+All routes require a valid Cognito-issued JWT (Authorization header or `token` query parameter for media streams).
 
-## Deploying to AWS
+| Method & Path | Description |
+| --- | --- |
+| `POST /api/videos/upload` | Accepts a `file` upload, stores raw bytes in S3 (`raw-videos/`), extracts metadata, writes thumbnail to S3, and inserts metadata into DynamoDB. |
+| `GET /api/videos` | Returns paginated videos for the authenticated owner (leveraging the DynamoDB `OwnerIndex`). Includes signed thumbnail URLs. |
+| `GET /api/videos/:id` | Fetch a single video record (optionally with a fresh signed thumbnail URL). |
+| `GET /api/videos/:id/stream` | Streams the requested variant (`original` or `transcoded`) directly from S3 with Range support. |
+| `POST /api/videos/:id/transcode` | Downloads the original from S3, runs ffmpeg using options from Secrets Manager, uploads the result to `transcoded-videos/`, updates DynamoDB. |
+| `GET /api/videos/:id/thumbnail` | Redirects to a short-lived signed thumbnail URL in S3. |
+| `DELETE /api/videos/:id` | Removes metadata and S3 objects (raw, transcoded, thumbnail). |
+| `GET /api/videos/:id/presigned` | Returns a JSON payload containing a pre-signed S3 URL for direct download (`variant=original|transcoded`, `download=true|false`). |
+| `GET /api/auth/me` | Echoes the Cognito identity embedded in the JWT. |
 
-1. Create ECR repos for video-webapp-backend and video-webapp-frontend.
+Errors are reported in JSON with `error.code` and HTTP status codes.
 
-2. Build, tag, and push images:
-```bash
-docker build -t video-webapp-backend ./server
-docker tag video-webapp-backend:latest <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
-docker push <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
+## Frontend Flow
 
-docker build -t video-webapp-frontend ./client
-docker tag video-webapp-frontend:latest <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
-docker push <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
+- The React app configures Amplify Auth with your Cognito IDs. Users sign up / confirm / sign in directly against Cognito.
+- After login, the app calls `/api/auth/me` to validate the JWT and persist metadata.
+- Uploads use `FormData` to stream bytes to the API, which forwards them to S3.
+- Thumbnails and video streams rely on short-lived URLs. Downloads call `/api/videos/:id/presigned` and open the result in a new tab.
+
+Environment variable `VITE_API_URL` should point to your API domain (e.g. `https://myvideoapi.example.com`).
+
+## Route53 / DNS
+
+Expose the API behind an ALB, CloudFront distribution, or API Gateway. Then create a Route53 record so clients call `https://myvideoapi.example.com`:
+
+```yaml
+# Example: Route53 A record aliasing an Application Load Balancer
+Resources:
+  ApiAliasRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: example.com.
+      Name: myvideoapi.example.com.
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApiLoadBalancer.CanonicalHostedZoneID
 ```
 
-3. On EC2, pull and run:
-```bash
-docker pull <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-backend:latest
-docker run -d -p 4000:4000 video-webapp-backend
+Ensure the API’s `CLIENT_ORIGINS` includes the frontend domain (e.g. `https://app.example.com`) so CORS preflights succeed.
 
-docker pull <acct-id>.dkr.ecr.ap-southeast-2.amazonaws.com/video-webapp-frontend:latest
-docker run -d -p 80:80 video-webapp-frontend
+## Infrastructure as Code
 
-```
-Now app is live at `http://<ec2-public-ip>`.
+A starter CloudFormation template is provided at [`infrastructure/cloudformation.yaml`](infrastructure/cloudformation.yaml). It provisions:
 
+- S3 bucket with sensible defaults
+- DynamoDB table + `OwnerIndex`
+- Cognito user pool and app client
+- Parameter Store entries populated from the created resources
+- Secrets Manager secret with default ffmpeg options
 
----
+Use it as a reference or starting point for your own deployment pipeline.
 
-### What To Do Next
+## Running Tests & Linting
 
-1. Copy these files into your repo.  
-2. Test locally with `docker-compose up`.  
-3. Push both images to AWS ECR.  
-4. Run them on EC2.  
+- Backend lint: `cd server && npm run lint`
+- Frontend lint: `cd client && npm run lint`
 
----
+## Additional Features Implemented
 
-## Usage
-- Register a user via `POST /api/auth/register` or the UI login form.
-- Upload a video from the dashboard. The server probes metadata, stores the original file under `server/src/public/videos`, and generates a thumbnail in `server/src/public/thumbs`.
-- Trigger a transcode to 720p (H.264/AAC) from the dashboard. Progress is reflected in the video status (`uploaded → transcoding → ready`).
-- Stream or download originals/transcodes directly in the dashboard via the secure `/stream` endpoint.
+- ✅ Parameter Store integration (bucket, table, region)
+- ✅ Secrets Manager integration for ffmpeg/thumbnail options
+- ✅ Pre-signed download endpoint (`/api/videos/:id/presigned`)
+- Stateless EC2/container runtime – all persistence in S3/DynamoDB/Cognito
 
 ## Troubleshooting
-| Issue | Fix |
-|-------|-----|
-| `ffmpeg` not found | Ensure ffmpeg is installed and accessible via your shell `PATH`. On macOS you can use Homebrew (`brew install ffmpeg`); on Linux use your package manager. |
-| CORS errors in the browser console | Confirm `CLIENT_ORIGIN` inside `server/.env` matches the Vite dev URL (default `http://localhost:5173`). Restart the server after changes. |
-| File upload limits | Multer defaults allow reasonably large files, but Node may still hit memory limits on extremely large uploads. Adjust `LIMIT_FILE_SIZE_MB` in `.env` and restart if needed. |
-| Database missing tables | Re-run `npm run init-db` inside `/server` to create or migrate the SQLite schema. |
 
-## File Storage Layout
-```
-server/src/public/
-  videos/   # original and transcoded mp4 files
-  thumbs/   # generated thumbnails (.jpg)
-```
+| Issue | Resolution |
+| --- | --- |
+| `ConfigError: S3 bucket name is required` | Ensure Parameter Store values exist or set `S3_BUCKET`/`DYNAMO_TABLE` directly in `.env`. |
+| Cognito JWT validation fails | Confirm `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, and `AWS_REGION` match the user pool issuing tokens. |
+| CORS blocked | Verify `CLIENT_ORIGINS` contains the exact protocol/host pair for your frontend (e.g. `https://app.example.com`). |
+| ffmpeg errors during transcode | Check the secret’s `transcodeOptions`, verify `ffmpeg` is installed, and review CloudWatch/log output. Status in DynamoDB will change to `failed`. |
 
-Backups are as simple as copying the SQLite file (`server/data.sqlite` by default) and the `public/` directory.
-
-## Testing Users
-Create accounts directly via the UI login form (switch to Register tab) or issue a `POST /api/auth/register` call with `{ "username": "demo", "password": "demo123" }`.
-
-## Scripts Overview
-- `npm run dev` (root): run both backend and frontend concurrently
-- `npm run dev` (server): nodemon-powered Express server with auto-reload
-- `npm run init-db` (server): create the SQLite tables
-- `npm run lint` (server/client): run ESLint for code quality
-- `npm run build` (client): build production-ready frontend assets
-
-Enjoy building locally without any cloud dependencies!
-
-## 
-
-To change your web app to transcode videos into 1080p instead of 720p, you need to update the ffmpeg command in your backend code to use 1080p settings.
-
-In your project, the relevant code is likely in server/src/videos/video.service.js. Look for where ffmpeg is called to transcode videos (it may use .size('1280x720') or similar for 720p).
-
-Change the resolution to 1920x1080 for 1080p. For example:
-
-
-
-The transcoding resolution is set by the ffmpeg option:
-
-```bash
-
-'-vf scale=1280:-2',
-
-```
-
-This means the video is scaled to 1280 pixels wide (720p). To transcode to 1080p, change this line to:
-
-```bash
-
-'-vf scale=1920:-2',
-
-```
-
-This will scale the video to 1920 pixels wide (1080p).
-
+Happy streaming!

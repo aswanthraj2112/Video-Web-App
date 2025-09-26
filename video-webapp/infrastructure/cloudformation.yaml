@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample infrastructure for the Cloud-Native Video Web App
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: myvideoapi.example.com
+    Description: API domain used by the frontend
+  HostedZoneId:
+    Type: String
+    Description: Route53 hosted zone ID for the apex domain
+
+Resources:
+  VideoAssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            ExposedHeaders: ['Content-Length']
+      VersioningConfiguration:
+        Status: Enabled
+
+  VideoMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: VideoMetadata
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: videoId
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: videoId
+          KeyType: HASH
+        - AttributeName: ownerId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: OwnerIndex
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  VideoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: video-webapp-users
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  VideoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: video-webapp-spa
+      UserPoolId: !Ref VideoUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      SupportedIdentityProviders: [COGNITO]
+
+  TranscodeSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: video-webapp-transcode
+      Description: ffmpeg and thumbnail configuration for the video web app
+      SecretString: |
+        {
+          "transcodeOptions": [
+            "-c:v libx264",
+            "-preset fast",
+            "-crf 23",
+            "-vf scale=1280:-2",
+            "-c:a aac",
+            "-b:a 128k",
+            "-movflags +faststart"
+          ],
+          "thumbnailOptions": {
+            "timestamps": ["2"],
+            "size": "640x?"
+          }
+        }
+
+  BucketParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /video-app/prod/s3-bucket
+      Type: String
+      Value: !Ref VideoAssetsBucket
+
+  TableParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /video-app/prod/dynamo-table
+      Type: String
+      Value: !Ref VideoMetadataTable
+
+  RegionParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /video-app/prod/region
+      Type: String
+      Value: !Ref AWS::Region
+
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: api-load-balancer.example.com
+        HostedZoneId: Z2P70J7EXAMPLE
+
+Outputs:
+  BucketName:
+    Description: S3 bucket storing raw/transcoded videos
+    Value: !Ref VideoAssetsBucket
+  DynamoTableName:
+    Description: DynamoDB table for metadata
+    Value: !Ref VideoMetadataTable
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref VideoUserPool
+  UserPoolClientId:
+    Description: Cognito SPA client ID
+    Value: !Ref VideoUserPoolClient
+  TranscodeSecretArn:
+    Description: ARN of the ffmpeg configuration secret
+    Value: !Ref TranscodeSecret

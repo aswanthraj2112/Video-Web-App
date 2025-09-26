@@ -1,6 +1,8 @@
 import React from 'react';
 
 function NavBar ({ user, onLogout }) {
+  const displayName = user?.email || user?.username;
+
   return (
     <header className="navbar">
       <div className="navbar-brand">Video Web App</div>
@@ -8,7 +10,7 @@ function NavBar ({ user, onLogout }) {
         {user ? (
           <>
             <span className="navbar-user">
-              Signed in as <strong>{user.username}</strong>
+              Signed in as <strong>{displayName}</strong>
             </span>
             <button type="button" className="btn" onClick={onLogout}>
               Log out
