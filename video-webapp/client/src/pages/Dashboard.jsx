@@ -42,6 +42,24 @@ function Dashboard ({ token, user }) {
     };
   }, [token, page, limit, notify, refreshIndex]);
 
+  useEffect(() => {
+    if (!selectedVideo) return;
+    let cancelled = false;
+    api
+      .getVideo(token, selectedVideo.id)
+      .then(({ video: fresh }) => {
+        if (!cancelled) {
+          setSelectedVideo(fresh);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, selectedVideo, refreshIndex]);
+
   const triggerRefresh = () => setRefreshIndex((value) => value + 1);
 
   const handleUpload = async (file) => {
@@ -58,8 +76,13 @@ function Dashboard ({ token, user }) {
     }
   };
 
-  const handleSelect = (video) => {
-    setSelectedVideo(video);
+  const handleSelect = async (video) => {
+    try {
+      const { video: fresh } = await api.getVideo(token, video.id);
+      setSelectedVideo(fresh);
+    } catch (error) {
+      notify(error.message, 'error');
+    }
   };
 
   const handleTranscode = async (video) => {
@@ -88,16 +111,24 @@ function Dashboard ({ token, user }) {
     }
   };
 
+  const handleDownload = async (video, variant) => {
+    try {
+      const { url } = await api.getPresignedUrl(token, video.id, { variant, download: true });
+      window.open(url, '_blank', 'noopener');
+    } catch (error) {
+      notify(error.message, 'error');
+    }
+  };
+
   return (
     <div className="dashboard">
       <section className="welcome">
-        <h1>Hello, {user.username}!</h1>
+        <h1>Hello, {user.username || 'there'}!</h1>
         <p>Upload a video to generate thumbnails, kick off a 720p transcode, and stream directly from the browser.</p>
       </section>
       <Uploader onUpload={handleUpload} uploading={uploading} />
       <VideoList
         videos={videos}
-        token={token}
         loading={loading}
         page={page}
         limit={limit}
@@ -106,9 +137,15 @@ function Dashboard ({ token, user }) {
         onTranscode={handleTranscode}
         onDelete={handleDelete}
         onPageChange={setPage}
+        onDownload={handleDownload}
       />
       {selectedVideo && (
-        <VideoPlayer video={selectedVideo} token={token} onClose={() => setSelectedVideo(null)} />
+        <VideoPlayer
+          video={selectedVideo}
+          token={token}
+          onClose={() => setSelectedVideo(null)}
+          onDownload={handleDownload}
+        />
       )}
     </div>
   );

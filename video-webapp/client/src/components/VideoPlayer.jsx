@@ -1,11 +1,52 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api.js';
 
-function VideoPlayer ({ video, token, onClose }) {
-  const defaultVariant = video.status === 'ready' && video.transcodedFilename ? 'transcoded' : 'original';
+function VideoPlayer ({ video, token, onClose, onDownload }) {
+  const defaultVariant = video.status === 'ready' && (video.transcodedFilename || video.transcodedKey)
+    ? 'transcoded'
+    : 'original';
   const [variant, setVariant] = useState(defaultVariant);
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const sourceUrl = useMemo(() => api.getStreamUrl(video.id, token, variant), [video.id, token, variant]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    setSourceUrl('');
+
+    api
+      .getPresignedUrl(token, video.id, { variant, download: false })
+      .then(({ url }) => {
+        if (!cancelled) {
+          setSourceUrl(url);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, video.id, variant]);
+
+  useEffect(() => {
+    setVariant(defaultVariant);
+  }, [defaultVariant]);
+
+  const canDownloadTranscoded = useMemo(
+    () => Boolean(video.transcodedFilename || video.transcodedKey),
+    [video.transcodedFilename, video.transcodedKey]
+  );
 
   return (
     <div className="player-backdrop" onClick={onClose}>
@@ -22,16 +63,24 @@ function VideoPlayer ({ video, token, onClose }) {
               Quality:
               <select value={variant} onChange={(event) => setVariant(event.target.value)}>
                 <option value="original">Original</option>
-                {video.transcodedFilename && (
+                {canDownloadTranscoded && (
                   <option value="transcoded">720p</option>
                 )}
               </select>
             </label>
-            <a className="btn-link" href={api.getStreamUrl(video.id, token, variant, true)}>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => onDownload(video, variant)}
+            >
               Download current
-            </a>
+            </button>
           </div>
-          <video key={variant} className="video-player" controls src={sourceUrl} />
+          {loading && <p>Generating stream URL…</p>}
+          {error && <p className="error">{error}</p>}
+          {!loading && !error && sourceUrl && (
+            <video key={sourceUrl} className="video-player" controls src={sourceUrl} />
+          )}
         </div>
       </div>
     </div>

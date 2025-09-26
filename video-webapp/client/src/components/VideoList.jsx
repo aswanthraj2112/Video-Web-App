@@ -1,5 +1,4 @@
 import React from 'react';
-import api from '../api.js';
 
 const formatBytes = (bytes) => {
   if (!bytes) return '0 B';
@@ -22,9 +21,10 @@ const formatDuration = (seconds) => {
   return parts.join(':');
 };
 
+const placeholderThumb = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iOTAiIGZpbGw9IiNFMEUwRTAiIHJ4PSIxMiIvPjx0ZXh0IHg9IjYwIiB5PSI0OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5Ij5ObyBUaHVtYjwvdGV4dD48L3N2Zz4=';
+
 function VideoList ({
   videos,
-  token,
   loading,
   page,
   limit,
@@ -32,7 +32,8 @@ function VideoList ({
   onSelect,
   onTranscode,
   onDelete,
-  onPageChange
+  onPageChange,
+  onDownload
 }) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -65,52 +66,55 @@ function VideoList ({
         <p>No uploads yet. Drop a file above to get started!</p>
       ) : (
         <ul className="video-grid">
-          {videos.map((video) => (
-            <li key={video.id} className="video-card">
-              <div className="thumb-wrapper">
-                <img
-                  src={api.getThumbnailUrl(video.id, token)}
-                  alt={`${video.originalName} thumbnail`}
-                  onError={(event) => {
-                    event.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iOTAiIGZpbGw9IiNFMEUwRTAiIHJ4PSIxMiIvPjx0ZXh0IHg9IjYwIiB5PSI0OCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5Ij5ObyBUaHVtYjwvdGV4dD48L3N2Zz4=';
-                  }}
-                />
-              </div>
-              <div className="video-info">
-                <h3 title={video.originalName}>{video.originalName}</h3>
-                <p>Duration: {formatDuration(video.durationSec)}</p>
-                <p>
-                  Status: <span className={`status status-${video.status}`}>{video.status}</span>
-                </p>
-                <p>Size: {formatBytes(video.sizeBytes)}</p>
-                <p>Uploaded: {new Date(video.createdAt).toLocaleString()}</p>
-              </div>
-              <div className="video-actions">
-                <button type="button" className="btn" onClick={() => onSelect(video)}>
-                  Play
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={video.status === 'transcoding'}
-                  onClick={() => onTranscode(video)}
-                >
-                  Transcode 720p
-                </button>
-                <a className="btn-link" href={api.getStreamUrl(video.id, token, 'original', true)}>
-                  Download original
-                </a>
-                {video.transcodedFilename && video.status === 'ready' && (
-                  <a className="btn-link" href={api.getStreamUrl(video.id, token, 'transcoded', true)}>
-                    Download 720p
-                  </a>
-                )}
-                <button type="button" className="btn btn-danger" onClick={() => onDelete(video)}>
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
+          {videos.map((video) => {
+            const hasTranscoded = Boolean(video.transcodedKey || video.transcodedFilename);
+            return (
+              <li key={video.id} className="video-card">
+                <div className="thumb-wrapper">
+                  <img
+                    src={video.thumbnailUrl || placeholderThumb}
+                    alt={`${video.originalName} thumbnail`}
+                    onError={(event) => {
+                      event.currentTarget.src = placeholderThumb;
+                    }}
+                  />
+                </div>
+                <div className="video-info">
+                  <h3 title={video.originalName}>{video.originalName}</h3>
+                  <p>Duration: {formatDuration(video.durationSec)}</p>
+                  <p>
+                    Status: <span className={`status status-${video.status}`}>{video.status}</span>
+                  </p>
+                  <p>Size: {formatBytes(video.sizeBytes)}</p>
+                  <p>Uploaded: {new Date(video.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="video-actions">
+                  <button type="button" className="btn" onClick={() => onSelect(video)}>
+                    Play
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={video.status === 'transcoding'}
+                    onClick={() => onTranscode(video)}
+                  >
+                    Transcode 720p
+                  </button>
+                  <button type="button" className="btn-link" onClick={() => onDownload(video, 'original')}>
+                    Download original
+                  </button>
+                  {hasTranscoded && video.status === 'ready' && (
+                    <button type="button" className="btn-link" onClick={() => onDownload(video, 'transcoded')}>
+                      Download 720p
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-danger" onClick={() => onDelete(video)}>
+                    Delete
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

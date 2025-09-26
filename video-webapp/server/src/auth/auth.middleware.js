@@ -1,28 +1,55 @@
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { AuthenticationError } from '../utils/errors.js';
-import { verifyToken } from './jwt.js';
+import { getConfig } from '../config.js';
 
-const authMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  let token = null;
+const jwkSets = new Map();
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  } else if (req.query && req.query.token) {
-    token = req.query.token;
+const buildIssuer = (region, userPoolId) =>
+  `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
+
+const getJwkSet = (issuer) => {
+  if (!jwkSets.has(issuer)) {
+    jwkSets.set(issuer, createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`)));
   }
+  return jwkSets.get(issuer);
+};
 
+const extractBearerToken = (req) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  if (req.query && req.query.token) {
+    return req.query.token;
+  }
+  return null;
+};
+
+const authMiddleware = async (req, res, next) => {
+  const token = extractBearerToken(req);
   if (!token) {
     return next(new AuthenticationError('Missing authentication token'));
   }
 
   try {
-    const payload = verifyToken(token);
+    const config = getConfig();
+    const issuer = buildIssuer(config.AWS_REGION, config.COGNITO_USER_POOL_ID);
+    const jwkSet = getJwkSet(issuer);
+    const { payload } = await jwtVerify(token, jwkSet, {
+      issuer,
+      audience: config.COGNITO_APP_CLIENT_ID
+    });
+
     req.user = {
       id: payload.sub,
-      username: payload.username
+      username: payload['cognito:username'] || payload.username || payload.email || payload.sub,
+      email: payload.email || null,
+      token,
+      claims: payload
     };
     return next();
-  } catch {
+  } catch (error) {
+    console.error('JWT validation failed', error);
     return next(new AuthenticationError('Invalid or expired token'));
   }
 };
