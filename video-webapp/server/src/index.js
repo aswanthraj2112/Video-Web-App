@@ -6,7 +6,19 @@ import authRoutes from './auth/auth.routes.js';
 import videoRoutes from './videos/video.routes.js';
 import { errorHandler, NotFoundError } from './utils/errors.js';
 
-const config = await loadConfig();
+let config;
+
+try {
+  config = await loadConfig();
+  console.log('✅ Runtime configuration loaded', {
+    region: config.REGION,
+    s3Bucket: config.S3_BUCKET,
+    dynamoTable: config.DYNAMO_TABLE
+  });
+} catch (error) {
+  console.error('Failed to load runtime configuration', error);
+  process.exit(1);
+}
 
 const app = express();
 
@@ -30,9 +42,12 @@ app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/api/health', (req, res) => {
+const healthHandler = (req, res) => {
   res.json({ status: 'ok', region: config.REGION });
-});
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
