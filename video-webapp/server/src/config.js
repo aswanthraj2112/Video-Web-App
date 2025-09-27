@@ -86,19 +86,6 @@ async function loadParameter (name) {
   }
 }
 
-async function loadParameterAny (names) {
-  const candidateNames = Array.isArray(names) ? names : [names];
-
-  for (const name of candidateNames) {
-    const value = await loadParameter(name);
-    if (value != null) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
 async function loadSecret (secretName) {
   try {
     const result = await secrets.send(new GetSecretValueCommand({ SecretId: secretName }));
@@ -136,7 +123,8 @@ export async function loadConfig () {
       presignedTtl,
       domainName,
       parameterCognitoClientId,
-      parameterCognitoUserPoolId
+      parameterCognitoUserPoolId,
+      cacheEndpoint
     ] = await Promise.all([
       loadParameter('/n11817143/app/s3Bucket'),
       loadParameter('/n11817143/app/dynamoTable'),
@@ -148,10 +136,12 @@ export async function loadConfig () {
       loadParameter('/n11817143/app/preSignedUrlTTL'),
       loadParameter('/n11817143/app/domainName'),
       loadParameter('/n11817143/app/cognitoClientId'),
-      loadParameter('/n11817143/app/cognitoUserPoolId')
+      loadParameter('/n11817143/app/cognitoUserPoolId'),
+      loadParameter('/n11817143/app/cacheEndpoint')
     ]);
 
-    const secretValues = await loadSecret('n11817143-a2-secret');
+    const secretName = process.env.SECRET_NAME || 'n11817143-a2-secret';
+    const secretValues = await loadSecret(secretName);
     const domainOrigin = normalizeDomainToOrigin(domainName);
 
     const config = {
@@ -181,6 +171,7 @@ export async function loadConfig () {
         || parameterCognitoClientId
         || '',
       JWT_SECRET: process.env.JWT_SECRET || secretValues.JWT_SECRET || '',
+      CACHE_ENDPOINT: process.env.CACHE_ENDPOINT || cacheEndpoint || '',
       PUBLIC_DIR: resolveFromRoot(process.env.PUBLIC_DIR || './src/public'),
       FFMPEG_PRESETS: ensureObject(
         secretValues.FFMPEG_PRESETS || parseJson(process.env.FFMPEG_PRESETS, null),

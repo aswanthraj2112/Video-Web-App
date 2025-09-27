@@ -45,5 +45,6 @@ This document captures the deployed AWS resources and runtime configuration for 
 | `/n11817143/app/s3_transcoded_prefix` | S3 prefix for transcoded assets |
 | `/n11817143/app/maxUploadSizeMb` | Upload file size limit in megabytes |
 | `/n11817143/app/preSignedUrlTTL` | Signed URL TTL (seconds) |
+| `/n11817143/app/cacheEndpoint` | ElastiCache Memcached endpoint |
 
 These values are read automatically by `server/src/config.js` during startup. Environment variables can still override them when required (see `server/.env.example`).
