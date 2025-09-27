@@ -1,14 +1,22 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Sample infrastructure for the Cloud-Native Video Web App
+Description: CAB432 Assignment 2 infrastructure for the Cloud-Native Video Web App
 
 Parameters:
   DomainName:
     Type: String
-    Default: myvideoapi.example.com
-    Description: API domain used by the frontend
+    Description: Fully qualified domain name serving the SPA (e.g. app.example.com)
   HostedZoneId:
     Type: String
-    Description: Route53 hosted zone ID for the apex domain
+    Description: Route53 hosted zone ID for the hosted domain
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC hosting the application workloads
+  VpcCidr:
+    Type: String
+    Description: CIDR block that should be allowed to access the cache cluster
+  CacheSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets used for the cache subnet group (minimum two)
 
 Resources:
   VideoAssetsBucket:
@@ -79,32 +87,59 @@ Resources:
       UserPoolId: !Ref VideoUserPool
       GenerateSecret: false
       PreventUserExistenceErrors: ENABLED
-      ExplicitAuthFlows:
-        - ALLOW_REFRESH_TOKEN_AUTH
-        - ALLOW_USER_SRP_AUTH
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - !Sub 'https://${DomainName}/'
+        - !Sub 'https://${DomainName}/auth/callback'
+      LogoutURLs:
+        - !Sub 'https://${DomainName}/'
+        - !Sub 'https://${DomainName}/logout'
       SupportedIdentityProviders: [COGNITO]
 
-  TranscodeSecret:
+  AppSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: video-webapp-transcode
-      Description: ffmpeg and thumbnail configuration for the video web app
-      SecretString: |
-        {
-          "transcodeOptions": [
-            "-c:v libx264",
-            "-preset fast",
-            "-crf 23",
-            "-vf scale=1280:-2",
-            "-c:a aac",
-            "-b:a 128k",
-            "-movflags +faststart"
-          ],
-          "thumbnailOptions": {
-            "timestamps": ["2"],
-            "size": "640x?"
-          }
-        }
+      Name: n11817143-a2-secret
+      Description: JWT secret for the CAB432 Assignment 2 video application
+      GenerateSecretString:
+        SecretStringTemplate: '{"JWT_SECRET":""}'
+        GenerateStringKey: JWT_SECRET
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow application access to Memcached cluster
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 11211
+          ToPort: 11211
+          CidrIp: !Ref VpcCidr
+
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for the video application cache cluster
+      SubnetIds: !Ref CacheSubnetIds
+
+  VideoCacheCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: memcached
+      CacheNodeType: cache.t3.micro
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      AZMode: single-az
 
   BucketParameter:
     Type: AWS::SSM::Parameter
@@ -127,6 +162,13 @@ Resources:
       Type: String
       Value: !Ref AWS::Region
 
+  CacheEndpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /video-app/prod/cache-endpoint
+      Type: String
+      Value: !Sub '${VideoCacheCluster.ConfigurationEndpoint.Address}:${VideoCacheCluster.ConfigurationEndpoint.Port}'
+
   Route53Record:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -139,17 +181,20 @@ Resources:
 
 Outputs:
   BucketName:
-    Description: S3 bucket storing raw/transcoded videos
+    Description: S3 bucket storing raw and transcoded videos
     Value: !Ref VideoAssetsBucket
   DynamoTableName:
     Description: DynamoDB table for metadata
     Value: !Ref VideoMetadataTable
+  CacheEndpoint:
+    Description: Endpoint of the Memcached cache cluster
+    Value: !Sub '${VideoCacheCluster.ConfigurationEndpoint.Address}:${VideoCacheCluster.ConfigurationEndpoint.Port}'
   UserPoolId:
     Description: Cognito User Pool ID
     Value: !Ref VideoUserPool
   UserPoolClientId:
     Description: Cognito SPA client ID
     Value: !Ref VideoUserPoolClient
-  TranscodeSecretArn:
-    Description: ARN of the ffmpeg configuration secret
-    Value: !Ref TranscodeSecret
+  SecretArn:
+    Description: ARN of the JWT secret
+    Value: !Ref AppSecret

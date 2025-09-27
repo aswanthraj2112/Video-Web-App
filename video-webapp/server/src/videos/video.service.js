@@ -20,7 +20,7 @@ import {
   QueryCommand
 } from '@aws-sdk/lib-dynamodb';
 import { AppError, NotFoundError } from '../utils/errors.js';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 import { getDocumentClient, getS3Client } from '../aws/clients.js';
 
 const ensureTrailingSlash = (value) => (value.endsWith('/') ? value : `${value}/`);

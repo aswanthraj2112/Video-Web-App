@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { loadConfig } from './config.js';
+import { loadConfig, getConfig } from './awsConfig.js';
 import authRoutes from './auth/auth.routes.js';
 import videoRoutes from './videos/video.routes.js';
 import { errorHandler, NotFoundError } from './utils/errors.js';
@@ -11,27 +11,20 @@ const app = express();
 
 (async () => {
   try {
-    const config = await loadConfig();
+    await loadConfig();
+    const config = getConfig();
 
-    const allowedOrigins = new Set(
-      Array.isArray(config.CLIENT_ORIGINS)
-        ? config.CLIENT_ORIGINS
-        : `${config.CLIENT_ORIGINS}`
-          .split(',')
-          .map((origin) => origin.trim())
-          .filter(Boolean)
-    );
+    console.log('✅ Loaded AWS configuration', {
+      region: config.AWS_REGION,
+      s3Bucket: config.S3_BUCKET,
+      dynamoTable: config.DYNAMO_TABLE,
+      cacheEndpoint: config.CACHE_ENDPOINT
+    });
 
     const awsEnabled = useAwsServices();
 
     app.use(cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.has(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error(`Origin ${origin} not allowed by CORS`));
-      },
+      origin: (origin, callback) => callback(null, true),
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
@@ -50,7 +43,7 @@ const app = express();
     }
 
     const healthHandler = (req, res) => {
-      res.json({ status: 'ok', region: config.REGION });
+      res.json({ status: 'ok', configLoaded: true, region: config.REGION });
     };
 
     app.get('/health', healthHandler);

@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 
 // Development storage - in-memory database simulation
 let devVideoDatabase = [];

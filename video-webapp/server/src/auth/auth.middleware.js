@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { AuthenticationError } from '../utils/errors.js';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 
 const jwkSets = new Map();
 
