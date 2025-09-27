@@ -5,10 +5,18 @@ import App from './App.jsx';
 import './styles.css';
 
 Amplify.configure({
+  API: {
+    endpoints: [
+      {
+        name: 'videoApi',
+        endpoint: import.meta.env.VITE_API_URL
+      }
+    ]
+  },
   Auth: {
     region: import.meta.env.VITE_AWS_REGION,
     userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
-    userPoolWebClientId: import.meta.env.VITE_COGNITO_APP_CLIENT_ID,
+    userPoolWebClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
     mandatorySignIn: true
   }
 });

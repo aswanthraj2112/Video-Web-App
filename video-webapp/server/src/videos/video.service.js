@@ -155,7 +155,7 @@ export async function handleUpload (ownerId, file) {
     const derivedFormat = metadata.format?.format_name || file.mimetype || 'video/mp4';
 
     const thumbnailPath = path.join(tempDir, `${videoId}.jpg`);
-    await generateThumbnail(tempVideoPath, thumbnailPath, config.THUMBNAIL_OPTIONS);
+    await generateThumbnail(tempVideoPath, thumbnailPath, config.THUMBNAIL_PRESET);
     const thumbnailBuffer = await fs.readFile(thumbnailPath);
 
     await s3.send(new PutObjectCommand({
@@ -355,6 +355,11 @@ export async function transcodeVideo (video, preset = '720p') {
   const bucket = config.S3_BUCKET;
   const { key: sourceKey } = resolveVariantKey(video, 'original');
 
+  const presetOptions = config.FFMPEG_PRESETS?.[preset];
+  if (!presetOptions || !Array.isArray(presetOptions) || presetOptions.length === 0) {
+    throw new AppError(`Unsupported preset: ${preset}`, 400, 'UNSUPPORTED_PRESET');
+  }
+
   const startTime = new Date().toISOString();
   await client.send(new UpdateCommand({
     TableName: config.DYNAMO_TABLE,
@@ -380,7 +385,7 @@ export async function transcodeVideo (video, preset = '720p') {
 
       await new Promise((resolve, reject) => {
         const command = ffmpeg(inputPath)
-          .outputOptions(config.TRANSCODE_OPTIONS)
+          .outputOptions(presetOptions)
           .format('mp4')
           .on('error', reject)
           .on('end', resolve)

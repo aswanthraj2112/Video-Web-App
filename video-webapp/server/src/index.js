@@ -32,7 +32,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', region: config.AWS_REGION });
+  res.json({ status: 'ok', region: config.REGION });
 });
 
 app.use('/api/auth', authRoutes);

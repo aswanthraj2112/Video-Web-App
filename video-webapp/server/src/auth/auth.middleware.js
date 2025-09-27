@@ -33,11 +33,11 @@ const authMiddleware = async (req, res, next) => {
 
   try {
     const config = getConfig();
-    const issuer = buildIssuer(config.AWS_REGION, config.COGNITO_USER_POOL_ID);
+    const issuer = buildIssuer(config.REGION, config.COGNITO_USER_POOL_ID);
     const jwkSet = getJwkSet(issuer);
     const { payload } = await jwtVerify(token, jwkSet, {
       issuer,
-      audience: config.COGNITO_APP_CLIENT_ID
+      audience: config.COGNITO_CLIENT_ID
     });
 
     req.user = {
