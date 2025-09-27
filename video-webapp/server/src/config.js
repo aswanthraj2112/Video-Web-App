@@ -118,9 +118,9 @@ export async function loadConfig () {
       loadParameterAny(['/a2/s3_bucket', '/n11817143/app/s3Bucket']),
       loadParameterAny(['/a2/dynamo_table', '/n11817143/app/dynamoTable']),
       loadParameterAny(['/a2/dynamo_owner_index', '/n11817143/app/dynamoOwnerIndex']),
-      loadParameter('/a2/s3_raw_prefix'),
-      loadParameter('/a2/s3_transcoded_prefix'),
-      loadParameter('/a2/s3_thumbnail_prefix'),
+      loadParameter('/n11817143/app/s3_raw_prefix'),
+      loadParameter('/n11817143/app/s3_transcoded_prefix'),
+      loadParameter('/n11817143/app/s3_thumbnail_prefix'),
       loadParameterAny(['/a2/limit_file_size_mb', '/n11817143/app/maxUploadSizeMb']),
       loadParameterAny(['/a2/presigned_ttl_seconds', '/n11817143/app/preSignedUrlTTL'])
     ]);
