@@ -2,16 +2,38 @@ version: "3.9"
 services:
   backend:
     build: ./server
-    ports: ["4000:4000"]
+    expose:
+      - "4000"
     environment:
       - AWS_REGION=${AWS_REGION:-ap-southeast-2}
       - CLIENT_ORIGINS=${CLIENT_ORIGINS:-http://localhost:5173}
-      # Config is fetched dynamically from AWS SSM + Secrets Manager
+    networks:
+      - appnet
+
   frontend:
     build: ./client
-    ports: ["80:80"]
+    expose:
+      - "80"
     environment:
-      - VITE_API_URL=${VITE_API_URL:-https://n11817143-videoapp.cab432.com/api}
+      - VITE_API_URL=${VITE_API_URL:-/api}
       - VITE_AWS_REGION=${VITE_AWS_REGION:-ap-southeast-2}
       - VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID:-ap-southeast-2_CdVnmKfrW}
       - VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID:-11pap5u5svkhr1hgjf934sj0id}
+    networks:
+      - appnet
+
+  proxy:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
