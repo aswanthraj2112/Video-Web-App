@@ -1,5 +1,5 @@
 import memjs from 'memjs';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 import { useAwsServices } from '../utils/runtime.js';
 
 // Development cache - in-memory storage
@@ -13,9 +13,7 @@ const getCacheClient = () => {
   }
   if (!cacheClient) {
     const config = getConfig();
-    const endpoint = process.env.MEMCACHED_ENDPOINT
-      || process.env.CACHE_ENDPOINT
-      || config.CACHE_ENDPOINT;
+    const endpoint = config.CACHE_ENDPOINT;
 
     if (!endpoint) {
       console.warn('CACHE_ENDPOINT not configured. Falling back to in-memory cache.');

@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { loadConfig, getConfig } from '../config.js';
+import { loadConfig, getConfig } from '../awsConfig.js';
 import authMiddleware from '../auth/auth.middleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';

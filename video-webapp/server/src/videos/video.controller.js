@@ -16,7 +16,7 @@ import {
   devGetPresignedUrl
 } from './dev-video.service.js';
 import { AppError } from '../utils/errors.js';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 import { cacheGet, cacheSet } from '../aws/cache.js';
 import { useAwsServices } from '../utils/runtime.js';
 

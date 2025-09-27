@@ -2,7 +2,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { fromSSO } from '@aws-sdk/credential-providers';
-import { getConfig } from '../config.js';
+import { getConfig } from '../awsConfig.js';
 import { useAwsServices } from '../utils/runtime.js';
 
 let s3Client;
