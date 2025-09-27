@@ -10,7 +10,7 @@ let documentClient;
 export const getS3Client = () => {
   if (!s3Client) {
     const config = getConfig();
-    s3Client = new S3Client({ region: config.AWS_REGION });
+    s3Client = new S3Client({ region: config.REGION });
   }
   return s3Client;
 };
@@ -18,7 +18,7 @@ export const getS3Client = () => {
 export const getDynamoClient = () => {
   if (!dynamoClient) {
     const config = getConfig();
-    dynamoClient = new DynamoDBClient({ region: config.AWS_REGION });
+    dynamoClient = new DynamoDBClient({ region: config.REGION });
   }
   return dynamoClient;
 };

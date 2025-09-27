@@ -7,8 +7,11 @@ Modernized video management platform with an Express API and a React frontend. A
 - **Amazon Cognito** – user authentication & JWT issuance
 - **AWS Systems Manager Parameter Store** – runtime configuration (bucket, table, region)
 - **AWS Secrets Manager** – ffmpeg tuning and other sensitive settings
+- **Amazon ElastiCache (Memcached)** – low-latency cache for metadata and signed URLs
 
 The UI authenticates with Cognito, uploads video files directly to the API (which streams to S3), triggers ffmpeg transcodes, and plays media through signed URLs.
+
+Configuration is fetched dynamically from AWS Systems Manager Parameter Store and Secrets Manager on every container start, keeping the service stateless. Frequently accessed video metadata and generated download links are cached in Amazon ElastiCache (Memcached) to minimise DynamoDB lookups and repeated presign calls.
 
 ## Architecture Overview
 
@@ -16,9 +19,10 @@ The UI authenticates with Cognito, uploads video files directly to the API (whic
 React (Vite) SPA ──► Express API ──► S3 (raw/transcoded/thumbnails)
        │                 │
        │                 ├─► DynamoDB (VideoMetadata table)
-       │                 ├─► Parameter Store (S3 bucket / table / region)
-       │                 ├─► Secrets Manager (ffmpeg presets)
-       ▼                 └─► Cognito (JWT validation)
+       │                 ├─► Parameter Store (S3 bucket / table / region / Cognito IDs / TTL)
+       │                 ├─► Secrets Manager (JWT + ffmpeg/thumbnail presets)
+       │                 ├─► ElastiCache (Memcached metadata & URL cache)
+       ▼                 └─► Cognito (JWT validation via JWKS)
 Cognito Hosted UI / Amplify Auth
 ```
 
@@ -36,29 +40,37 @@ Cognito Hosted UI / Amplify Auth
 2. **DynamoDB table** `VideoMetadata` (partition key: `videoId`, sort key: `ownerId`). Add a global secondary index `OwnerIndex` with `ownerId` as the partition key and `createdAt` as the sort key for listing a user’s videos.
 3. **Cognito User Pool** and an **App Client** (no secret) for the SPA. Enable optional MFA if desired.
 4. **Parameter Store entries** (String, `WithDecryption=false`):
-   - `/video-app/prod/s3-bucket` → `my-video-app-assets`
-   - `/video-app/prod/dynamo-table` → `VideoMetadata`
-   - `/video-app/prod/region` → `us-east-1`
-5. **Secrets Manager secret** (JSON) for transcoding options. Example payload:
+   - `/n11817143/app/s3Bucket` → `my-video-app-assets`
+   - `/n11817143/app/dynamoTable` → `VideoMetadata`
+   - `/n11817143/app/dynamoOwnerIndex` → `OwnerIndex`
+   - `/n11817143/app/region` → `ap-southeast-2`
+   - `/n11817143/app/presignTTL` → `900`
+   - `/n11817143/app/cognitoUserPoolId` → `ap-southeast-2_CdVnmKfrW`
+   - `/n11817143/app/cognitoClientId` → `11pap5u5svkhr1hgjf934sj0id`
+5. **Secrets Manager secret** `n11817143-a2-secret` (JSON) containing sensitive runtime configuration. Example payload:
    ```json
    {
-     "transcodeOptions": [
-       "-c:v libx264",
-       "-preset fast",
-       "-crf 23",
-       "-vf scale=1280:-2",
-       "-c:a aac",
-       "-b:a 128k",
-       "-movflags +faststart"
-     ],
-     "thumbnailOptions": {
+     "JWT_SECRET": "replace-me",
+     "FFMPEG_PRESETS": {
+       "720p": [
+         "-c:v libx264",
+         "-preset fast",
+         "-crf 23",
+         "-vf scale=1280:-2",
+         "-c:a aac",
+         "-b:a 128k",
+         "-movflags +faststart"
+       ]
+     },
+     "THUMBNAIL_PRESET": {
        "timestamps": ["2"],
        "size": "640x?"
      }
    }
    ```
+6. **ElastiCache Memcached cluster** reachable at `n11817143-a2-cache.km2ji.cfg.apse2.cache.amazonaws.com:11211`.
 
-Record the Parameter Store names and the secret ARN – they are referenced from environment variables.
+Record the Parameter Store names and the secret ARN – they are resolved automatically at runtime; the container remains stateless.
 
 ## Configuration Files
 
@@ -77,11 +89,8 @@ cp client/.env.example client/.env
 At minimum set:
 
 - `AWS_REGION` or `AWS_DEFAULT_REGION`
-- `PARAMETER_S3_BUCKET`, `PARAMETER_DYNAMO_TABLE`, `PARAMETER_REGION`
-- `SECRETS_TRANSCODE_OPTIONS`
-- `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`
 - `CLIENT_ORIGINS` (comma-separated list including your frontend origin, e.g. `https://myvideoapp.example.com`)
-- Frontend `.env`: `VITE_API_URL`, `VITE_AWS_REGION`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_APP_CLIENT_ID`
+- Frontend `.env`: `VITE_API_URL`, `VITE_AWS_REGION`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`
 
 ## Running Locally
 
@@ -107,21 +116,16 @@ The Express API listens on port `4000` by default. On startup it loads configura
 
 ## Docker Compose (local testing)
 
-`docker-compose.yml` now expects cloud-aware variables. Supply Cognito IDs and Parameter Store names before running:
+`docker-compose.yml` keeps runtime secrets out of source control. Provide AWS credentials and any optional overrides before running:
 
 ```bash
-AWS_REGION=us-east-1 \
-PARAMETER_S3_BUCKET=/video-app/prod/s3-bucket \
-PARAMETER_DYNAMO_TABLE=/video-app/prod/dynamo-table \
-PARAMETER_REGION=/video-app/prod/region \
-SECRETS_TRANSCODE_OPTIONS=/video-app/prod/transcode \
-COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX \
-COGNITO_APP_CLIENT_ID=1h2jk3l456mnop7890qrstuvwx \
+# Config is fetched dynamically from AWS SSM + Secrets Manager
+AWS_REGION=ap-southeast-2 \
 CLIENT_ORIGINS=http://localhost:5173 \
 VITE_API_URL=http://localhost:4000 \
-VITE_AWS_REGION=us-east-1 \
-VITE_COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX \
-VITE_COGNITO_APP_CLIENT_ID=1h2jk3l456mnop7890qrstuvwx \
+VITE_AWS_REGION=ap-southeast-2 \
+VITE_COGNITO_USER_POOL_ID=ap-southeast-2_CdVnmKfrW \
+VITE_COGNITO_CLIENT_ID=11pap5u5svkhr1hgjf934sj0id \
 docker-compose up --build
 ```
 
@@ -193,8 +197,9 @@ Use it as a reference or starting point for your own deployment pipeline.
 
 ## Additional Features Implemented
 
-- ✅ Parameter Store integration (bucket, table, region)
-- ✅ Secrets Manager integration for ffmpeg/thumbnail options
+- ✅ Parameter Store integration (bucket, table, region, Cognito IDs, TTL)
+- ✅ Secrets Manager integration for JWT/ffmpeg/thumbnail presets
+- ✅ ElastiCache-backed caching for video metadata and pre-signed URLs
 - ✅ Pre-signed download endpoint (`/api/videos/:id/presigned`)
 - Stateless EC2/container runtime – all persistence in S3/DynamoDB/Cognito
 
@@ -203,8 +208,8 @@ Use it as a reference or starting point for your own deployment pipeline.
 | Issue | Resolution |
 | --- | --- |
 | `ConfigError: S3 bucket name is required` | Ensure Parameter Store values exist or set `S3_BUCKET`/`DYNAMO_TABLE` directly in `.env`. |
-| Cognito JWT validation fails | Confirm `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, and `AWS_REGION` match the user pool issuing tokens. |
+| Cognito JWT validation fails | Confirm `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, and `AWS_REGION` match the user pool issuing tokens. |
 | CORS blocked | Verify `CLIENT_ORIGINS` contains the exact protocol/host pair for your frontend (e.g. `https://app.example.com`). |
-| ffmpeg errors during transcode | Check the secret’s `transcodeOptions`, verify `ffmpeg` is installed, and review CloudWatch/log output. Status in DynamoDB will change to `failed`. |
+| ffmpeg errors during transcode | Check the secret’s `FFMPEG_PRESETS`, verify `ffmpeg` is installed, and review CloudWatch/log output. Status in DynamoDB will change to `failed`. |
 
 Happy streaming!
