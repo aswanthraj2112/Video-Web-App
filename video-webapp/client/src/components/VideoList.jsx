@@ -62,11 +62,11 @@ function VideoList ({
 
       {loading ? (
         <p>Loading videos…</p>
-      ) : videos.length === 0 ? (
+      ) : !videos || videos.length === 0 ? (
         <p>No uploads yet. Drop a file above to get started!</p>
       ) : (
         <ul className="video-grid">
-          {videos.map((video) => {
+          {(videos || []).map((video) => {
             const hasTranscoded = Boolean(video.transcodedKey || video.transcodedFilename);
             return (
               <li key={video.id} className="video-card">

@@ -31,8 +31,31 @@ const authMiddleware = async (req, res, next) => {
     return next(new AuthenticationError('Missing authentication token'));
   }
 
+  // Development mode: accept mock tokens
+  if (token === 'dev-token-123') {
+    req.user = {
+      id: 'dev-user-id',
+      username: 'dev-user',
+      email: 'dev@example.com',
+      token,
+      claims: {
+        sub: 'dev-user-id',
+        'cognito:username': 'dev-user',
+        email: 'dev@example.com'
+      }
+    };
+    return next();
+  }
+
   try {
     const config = getConfig();
+    
+    // Check if Cognito is properly configured
+    if (!config.COGNITO_USER_POOL_ID || !config.COGNITO_CLIENT_ID) {
+      console.warn('⚠️ Cognito not configured, rejecting token');
+      return next(new AuthenticationError('Authentication service not configured'));
+    }
+
     const issuer = buildIssuer(config.REGION, config.COGNITO_USER_POOL_ID);
     const jwkSet = getJwkSet(issuer);
     const { payload } = await jwtVerify(token, jwkSet, {

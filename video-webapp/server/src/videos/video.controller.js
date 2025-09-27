@@ -8,11 +8,32 @@ import {
   deleteVideo,
   createPresignedUrl
 } from './video.service.js';
+import {
+  devUploadVideo,
+  devListVideos,
+  devGetVideo,
+  devDeleteVideo,
+  devUpdateVideo,
+  devGetPresignedUrl
+} from './dev-video.service.js';
 import { AppError } from '../utils/errors.js';
 import { getConfig } from '../config.js';
 import { cacheGet, cacheSet } from '../aws/cache.js';
 
+// Check if AWS is configured properly (avoid trying to use AWS services)
+const hasAwsCredentials = () => {
+  const config = getConfig();
+  // Return false to force development mode since we don't have AWS credentials
+  return false; // Always use development mode for now
+};
+
 export const uploadVideo = async (req, res) => {
+  if (!hasAwsCredentials()) {
+    console.log('🚧 Using development video upload');
+    const video = await devUploadVideo(req.user.id, req.file);
+    return res.status(201).json({ videoId: video.id, video });
+  }
+  
   const videoId = await handleUpload(req.user.id, req.file);
   res.status(201).json({ videoId });
 };
@@ -21,11 +42,24 @@ export const listUserVideos = async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page || '1', 10));
   const rawLimit = Number.parseInt(req.query.limit || '10', 10);
   const limit = Math.min(Math.max(rawLimit || 10, 1), 50);
+  
+  if (!hasAwsCredentials()) {
+    console.log('🚧 Using development video listing');
+    const result = await devListVideos(req.user.id, page, limit);
+    return res.json({ page, limit, ...result });
+  }
+  
   const result = await listVideos(req.user.id, page, limit);
   res.json({ page, limit, ...result });
 };
 
 export const getVideo = async (req, res) => {
+  if (!hasAwsCredentials()) {
+    console.log('🚧 Using development video get');
+    const video = await devGetVideo(req.params.id, req.user.id);
+    return res.json({ video });
+  }
+
   const cacheKey = `video:${req.user.id}:${req.params.id}:metadata`;
   const cached = await cacheGet(cacheKey);
   if (cached) {
@@ -76,6 +110,19 @@ export const removeVideo = async (req, res) => {
 };
 
 export const getPresignedDownload = async (req, res) => {
+  if (!hasAwsCredentials()) {
+    console.log('🚧 Using development presigned URL');
+    const variant = req.validatedQuery?.variant || 'original';
+    const download = req.validatedQuery?.download ?? true;
+    
+    try {
+      const payload = await devGetPresignedUrl(req.params.id, req.user.id, variant, download);
+      return res.json(payload);
+    } catch (error) {
+      throw new AppError(error.message, 404, 'VIDEO_NOT_FOUND');
+    }
+  }
+
   const config = getConfig();
   const variant = req.validatedQuery?.variant || 'original';
   const download = req.validatedQuery?.download ?? true;

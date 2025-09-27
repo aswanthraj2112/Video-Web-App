@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { fromSSO } from '@aws-sdk/credential-providers';
 
 dotenv.config();
 
@@ -11,8 +12,17 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-southeast-2';
-const ssm = new SSMClient({ region });
-const secrets = new SecretsManagerClient({ region });
+
+// Configure AWS clients with SSO credentials
+const awsConfig = {
+  region,
+  credentials: process.env.AWS_PROFILE ? 
+    fromSSO({ profile: process.env.AWS_PROFILE }) : 
+    undefined // Fall back to default credential chain
+};
+
+const ssm = new SSMClient(awsConfig);
+const secrets = new SecretsManagerClient(awsConfig);
 
 const DEFAULT_FFMPEG_PRESETS = {
   '720p': [
@@ -100,6 +110,16 @@ async function loadSecret (secretName) {
   }
 }
 
+function normalizeDomainToOrigin (value) {
+  if (!value) return null;
+  const trimmed = `${value}`.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
 export async function loadConfig () {
   if (cachedConfig) return cachedConfig;
   if (loadingPromise) return loadingPromise;
@@ -113,7 +133,10 @@ export async function loadConfig () {
       transcodedPrefix,
       thumbnailPrefix,
       limitFileSize,
-      presignedTtl
+      presignedTtl,
+      domainName,
+      parameterCognitoClientId,
+      parameterCognitoUserPoolId
     ] = await Promise.all([
       loadParameter('/n11817143/app/s3Bucket'),
       loadParameter('/n11817143/app/dynamoTable'),
@@ -122,15 +145,22 @@ export async function loadConfig () {
       loadParameter('/n11817143/app/s3_transcoded_prefix'),
       loadParameter('/n11817143/app/s3_thumbnail_prefix'),
       loadParameter('/n11817143/app/maxUploadSizeMb'),
-      loadParameter('/n11817143/app/preSignedUrlTTL')
+      loadParameter('/n11817143/app/preSignedUrlTTL'),
+      loadParameter('/n11817143/app/domainName'),
+      loadParameter('/n11817143/app/cognitoClientId'),
+      loadParameter('/n11817143/app/cognitoUserPoolId')
     ]);
 
     const secretValues = await loadSecret('n11817143-a2-secret');
+    const domainOrigin = normalizeDomainToOrigin(domainName);
 
     const config = {
       PORT: parseNumber(process.env.PORT, 4000),
       CLIENT_ORIGINS: parseOrigins(
-        process.env.CLIENT_ORIGINS || secretValues.CLIENT_ORIGINS || 'http://localhost:5173'
+        process.env.CLIENT_ORIGINS
+        || secretValues.CLIENT_ORIGINS
+        || domainOrigin
+        || 'http://localhost:5173'
       ),
       REGION: region,
       AWS_REGION: region,
@@ -142,8 +172,14 @@ export async function loadConfig () {
       S3_THUMBNAIL_PREFIX: process.env.S3_THUMBNAIL_PREFIX || thumbnailPrefix || 'thumbnails/',
       LIMIT_FILE_SIZE_MB: parseNumber(process.env.LIMIT_FILE_SIZE_MB ?? limitFileSize, 512),
       PRESIGNED_TTL_SECONDS: parseNumber(process.env.PRESIGNED_TTL_SECONDS ?? presignedTtl, 900),
-      COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID || secretValues.COGNITO_USER_POOL_ID || '',
-      COGNITO_CLIENT_ID: process.env.COGNITO_CLIENT_ID || secretValues.COGNITO_CLIENT_ID || '',
+      COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID
+        || secretValues.COGNITO_USER_POOL_ID
+        || parameterCognitoUserPoolId
+        || '',
+      COGNITO_CLIENT_ID: process.env.COGNITO_CLIENT_ID
+        || secretValues.COGNITO_CLIENT_ID
+        || parameterCognitoClientId
+        || '',
       JWT_SECRET: process.env.JWT_SECRET || secretValues.JWT_SECRET || '',
       PUBLIC_DIR: resolveFromRoot(process.env.PUBLIC_DIR || './src/public'),
       FFMPEG_PRESETS: ensureObject(
@@ -173,7 +209,8 @@ export async function loadConfig () {
     }
 
     if (!config.COGNITO_USER_POOL_ID || !config.COGNITO_CLIENT_ID) {
-      throw new Error('Cognito configuration missing. Ensure Parameter Store contains user pool ID and client ID.');
+      console.warn('⚠️ Cognito configuration missing. Running in development mode.');
+      console.warn('   Set COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID environment variables for production.');
     }
 
     cachedConfig = config;

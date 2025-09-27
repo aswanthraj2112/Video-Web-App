@@ -23,8 +23,8 @@ function Dashboard ({ token, user }) {
       .listVideos(token, page, limit)
       .then((data) => {
         if (!cancelled) {
-          setVideos(data.items);
-          setTotal(data.total);
+          setVideos(data.items || []);
+          setTotal(data.total || 0);
         }
       })
       .catch((error) => {

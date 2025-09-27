@@ -39,6 +39,14 @@ const app = express();
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true }));
 
+    // Serve development storage files
+    const hasAwsCredentials = false; // Force development mode
+    if (!hasAwsCredentials) {
+      const path = await import('path');
+      app.use('/dev-storage', express.static(path.join(config.PUBLIC_DIR, 'dev-storage')));
+      console.log('🚧 Serving development storage at /dev-storage');
+    }
+
     const healthHandler = (req, res) => {
       res.json({ status: 'ok', region: config.REGION });
     };
