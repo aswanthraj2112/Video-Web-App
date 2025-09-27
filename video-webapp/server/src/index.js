@@ -1,13 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { loadConfig, getConfig } from './config.js';
+import { loadConfig } from './config.js';
 import authRoutes from './auth/auth.routes.js';
 import videoRoutes from './videos/video.routes.js';
 import { errorHandler, NotFoundError } from './utils/errors.js';
 
-await loadConfig();
-const config = getConfig();
+const config = await loadConfig();
 
 const app = express();
 

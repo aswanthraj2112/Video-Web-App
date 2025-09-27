@@ -1,8 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { loadConfig as loadRemoteConfig } from './config/loader.js';
 
 dotenv.config();
 
@@ -14,22 +13,6 @@ const resolveFromRoot = (maybeRelative) =>
   path.isAbsolute(maybeRelative)
     ? maybeRelative
     : path.resolve(rootDir, maybeRelative);
-
-let cachedConfig = null;
-let cachedSsmClient = null;
-let cachedSecretsClient = null;
-
-const PARAMETER_NAMES = {
-  S3_BUCKET: '/n11817143/app/s3Bucket',
-  DYNAMO_TABLE: '/n11817143/app/dynamoTable',
-  DYNAMO_OWNER_INDEX: '/n11817143/app/dynamoOwnerIndex',
-  REGION: '/n11817143/app/region',
-  PRESIGN_TTL: '/n11817143/app/presignTTL',
-  COGNITO_USER_POOL_ID: '/n11817143/app/cognitoUserPoolId',
-  COGNITO_CLIENT_ID: '/n11817143/app/cognitoClientId'
-};
-
-const SECRET_NAME = 'n11817143-a2-secret';
 
 const DEFAULT_FFMPEG_PRESETS = {
   '720p': [
@@ -48,41 +31,7 @@ const DEFAULT_THUMBNAIL_PRESET = {
   size: '640x?'
 };
 
-const getSsmClient = (region) => {
-  if (!cachedSsmClient) {
-    cachedSsmClient = new SSMClient({ region });
-  }
-  return cachedSsmClient;
-};
-
-const getSecretsClient = (region) => {
-  if (!cachedSecretsClient) {
-    cachedSecretsClient = new SecretsManagerClient({ region });
-  }
-  return cachedSecretsClient;
-};
-
-async function fetchParameter (client, name, { decrypt = true } = {}) {
-  try {
-    const response = await client.send(
-      new GetParameterCommand({ Name: name, WithDecryption: decrypt })
-    );
-    return response.Parameter?.Value ?? null;
-  } catch (error) {
-    console.warn(`Unable to load parameter ${name}:`, error.message);
-    return null;
-  }
-}
-
-async function fetchSecret (client, secretId) {
-  try {
-    const response = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
-    return response.SecretString ?? null;
-  } catch (error) {
-    console.warn(`Unable to load secret ${secretId}:`, error.message);
-    return null;
-  }
-}
+let cachedConfig = null;
 
 function parseNumber (value, fallback) {
   if (value == null) return fallback;
@@ -98,67 +47,40 @@ function normalizeOrigins (rawOrigins) {
     .filter((value) => value.length > 0);
 }
 
+function ensureObject (value, fallback = {}) {
+  return value && typeof value === 'object' ? value : fallback;
+}
+
 export async function loadConfig () {
   if (cachedConfig) return cachedConfig;
 
-  const baseRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-southeast-2';
-  const ssmClient = getSsmClient(baseRegion);
-  const secretsClient = getSecretsClient(baseRegion);
+  const remoteConfig = await loadRemoteConfig();
 
-  const [
-    s3Bucket,
-    dynamoTable,
-    dynamoOwnerIndex,
-    regionParam,
-    presignTtl,
-    cognitoUserPoolId,
-    cognitoClientId
-  ] = await Promise.all([
-    fetchParameter(ssmClient, PARAMETER_NAMES.S3_BUCKET, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.DYNAMO_TABLE, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.DYNAMO_OWNER_INDEX, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.REGION, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.PRESIGN_TTL, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.COGNITO_USER_POOL_ID, { decrypt: false }),
-    fetchParameter(ssmClient, PARAMETER_NAMES.COGNITO_CLIENT_ID, { decrypt: false })
-  ]);
+  const baseRegion = remoteConfig.REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-southeast-2';
 
-  const secretString = await fetchSecret(secretsClient, SECRET_NAME);
-  let secretPayload = {};
-  if (secretString) {
-    try {
-      secretPayload = JSON.parse(secretString);
-    } catch (error) {
-      console.warn('Failed to parse Secrets Manager payload. Falling back to defaults.', error.message);
-    }
-  }
-
-  const region = regionParam || baseRegion;
   const resolvedConfig = {
-    PORT: parseNumber(process.env.PORT, 4000),
+    PORT: parseNumber(remoteConfig.PORT ?? process.env.PORT, 4000),
     CLIENT_ORIGINS: normalizeOrigins(
-      process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+      remoteConfig.CLIENT_ORIGINS?.length ? remoteConfig.CLIENT_ORIGINS : (process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || 'http://localhost:5173')
     ),
-    REGION: region,
-    AWS_REGION: region,
-    S3_BUCKET: s3Bucket || process.env.S3_BUCKET || '',
+    REGION: baseRegion,
+    AWS_REGION: baseRegion,
+    S3_BUCKET: remoteConfig.S3_BUCKET || process.env.S3_BUCKET || '',
     S3_RAW_PREFIX: process.env.S3_RAW_PREFIX || 'raw-videos/',
     S3_TRANSCODED_PREFIX: process.env.S3_TRANSCODED_PREFIX || 'transcoded-videos/',
     S3_THUMBNAIL_PREFIX: process.env.S3_THUMBNAIL_PREFIX || 'thumbnails/',
-    DYNAMO_TABLE: dynamoTable || process.env.DYNAMO_TABLE || '',
-    DYNAMO_OWNER_INDEX: dynamoOwnerIndex || process.env.DYNAMO_OWNER_INDEX || '',
+    DYNAMO_TABLE: remoteConfig.DYNAMO_TABLE || process.env.DYNAMO_TABLE || '',
+    DYNAMO_OWNER_INDEX: remoteConfig.DYNAMO_OWNER_INDEX || process.env.DYNAMO_OWNER_INDEX || '',
     LIMIT_FILE_SIZE_MB: parseNumber(process.env.LIMIT_FILE_SIZE_MB, 512),
-    PRESIGNED_TTL_SECONDS: parseNumber(presignTtl, parseNumber(process.env.PRESIGNED_TTL_SECONDS, 900)),
-    COGNITO_USER_POOL_ID: cognitoUserPoolId || process.env.COGNITO_USER_POOL_ID || '',
-    COGNITO_CLIENT_ID: cognitoClientId || process.env.COGNITO_CLIENT_ID || process.env.COGNITO_APP_CLIENT_ID || '',
+    PRESIGNED_TTL_SECONDS: parseNumber(remoteConfig.PRESIGNED_TTL_SECONDS ?? process.env.PRESIGNED_TTL_SECONDS, 900),
+    COGNITO_USER_POOL_ID: remoteConfig.COGNITO_USER_POOL_ID || process.env.COGNITO_USER_POOL_ID || '',
+    COGNITO_CLIENT_ID: remoteConfig.COGNITO_CLIENT_ID || process.env.COGNITO_CLIENT_ID || process.env.COGNITO_APP_CLIENT_ID || '',
     PUBLIC_DIR: resolveFromRoot(process.env.PUBLIC_DIR || './src/public'),
-    JWT_SECRET: secretPayload.JWT_SECRET || process.env.JWT_SECRET || '',
-    FFMPEG_PRESETS: secretPayload.FFMPEG_PRESETS && typeof secretPayload.FFMPEG_PRESETS === 'object'
-      ? secretPayload.FFMPEG_PRESETS
-      : DEFAULT_FFMPEG_PRESETS,
+    JWT_SECRET: remoteConfig.JWT_SECRET || process.env.JWT_SECRET || '',
+    FFMPEG_PRESETS: ensureObject(remoteConfig.FFMPEG_PRESETS, DEFAULT_FFMPEG_PRESETS),
     THUMBNAIL_PRESET: {
       ...DEFAULT_THUMBNAIL_PRESET,
-      ...(secretPayload.THUMBNAIL_PRESET || {})
+      ...ensureObject(remoteConfig.THUMBNAIL_PRESET)
     }
   };
 
@@ -176,6 +98,12 @@ export async function loadConfig () {
   }
 
   cachedConfig = resolvedConfig;
+  console.log('✅ Loaded config:', {
+    S3_BUCKET: resolvedConfig.S3_BUCKET,
+    DYNAMO_TABLE: resolvedConfig.DYNAMO_TABLE,
+    REGION: resolvedConfig.REGION
+  });
+
   return cachedConfig;
 }
 
