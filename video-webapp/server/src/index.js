@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import authRoutes from './auth/auth.routes.js';
 import videoRoutes from './videos/video.routes.js';
 import { errorHandler, NotFoundError } from './utils/errors.js';
+import { useAwsServices } from './utils/runtime.js';
 
 const app = express();
 
@@ -20,6 +21,8 @@ const app = express();
           .map((origin) => origin.trim())
           .filter(Boolean)
     );
+
+    const awsEnabled = useAwsServices();
 
     app.use(cors({
       origin: (origin, callback) => {
@@ -39,9 +42,8 @@ const app = express();
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true }));
 
-    // Serve development storage files
-    const hasAwsCredentials = false; // Force development mode
-    if (!hasAwsCredentials) {
+    // Serve development storage files when running without AWS services
+    if (!awsEnabled) {
       const path = await import('path');
       app.use('/dev-storage', express.static(path.join(config.PUBLIC_DIR, 'dev-storage')));
       console.log('🚧 Serving development storage at /dev-storage');
@@ -66,6 +68,11 @@ const app = express();
     app.listen(config.PORT, () => {
       console.log(`🚀 Server running on port ${config.PORT}`);
       console.log('Using S3 bucket:', config.S3_BUCKET);
+      if (awsEnabled) {
+        console.log('AWS mode enabled');
+      } else {
+        console.log('Development services enabled');
+      }
     });
   } catch (error) {
     console.error('Failed to start server', error);

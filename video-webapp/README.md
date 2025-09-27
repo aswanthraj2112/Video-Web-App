@@ -47,6 +47,7 @@ Cognito Hosted UI / Amplify Auth
    - `/n11817143/app/presignTTL` → `900`
    - `/n11817143/app/cognitoUserPoolId` → `ap-southeast-2_CdVnmKfrW`
    - `/n11817143/app/cognitoClientId` → `11pap5u5svkhr1hgjf934sj0id`
+   - `/n11817143/app/cacheEndpoint` → `n11817143-a2-cache.km2ji.cfg.apse2.cache.amazonaws.com:11211`
 5. **Secrets Manager secret** `n11817143-a2-secret` (JSON) containing sensitive runtime configuration. Example payload:
    ```json
    {
@@ -91,6 +92,7 @@ At minimum set:
 - `AWS_REGION` or `AWS_DEFAULT_REGION`
 - `CLIENT_ORIGINS` (comma-separated list including your frontend origin, e.g. `https://myvideoapp.example.com`)
 - Frontend `.env`: `VITE_API_URL`, `VITE_AWS_REGION`, `VITE_COGNITO_USER_POOL_ID`, `VITE_COGNITO_CLIENT_ID`
+- Backend `.env`: set `USE_DEV_SERVICES=true` when developing locally to avoid calling AWS. Leave it unset/false on AWS so the real services are used. Provide `CACHE_ENDPOINT` or `MEMCACHED_ENDPOINT` if the ElastiCache cluster uses a different hostname.
 
 ## Running Locally
 
