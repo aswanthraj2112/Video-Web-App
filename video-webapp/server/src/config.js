@@ -76,6 +76,19 @@ async function loadParameter (name) {
   }
 }
 
+async function loadParameterAny (names) {
+  const candidateNames = Array.isArray(names) ? names : [names];
+
+  for (const name of candidateNames) {
+    const value = await loadParameter(name);
+    if (value != null) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 async function loadSecret (secretName) {
   try {
     const result = await secrets.send(new GetSecretValueCommand({ SecretId: secretName }));
@@ -102,14 +115,14 @@ export async function loadConfig () {
       limitFileSize,
       presignedTtl
     ] = await Promise.all([
-      loadParameter('/a2/s3_bucket'),
-      loadParameter('/a2/dynamo_table'),
-      loadParameter('/a2/dynamo_owner_index'),
+      loadParameterAny(['/a2/s3_bucket', '/n11817143/app/s3Bucket']),
+      loadParameterAny(['/a2/dynamo_table', '/n11817143/app/dynamoTable']),
+      loadParameterAny(['/a2/dynamo_owner_index', '/n11817143/app/dynamoOwnerIndex']),
       loadParameter('/a2/s3_raw_prefix'),
       loadParameter('/a2/s3_transcoded_prefix'),
       loadParameter('/a2/s3_thumbnail_prefix'),
-      loadParameter('/a2/limit_file_size_mb'),
-      loadParameter('/a2/presigned_ttl_seconds')
+      loadParameterAny(['/a2/limit_file_size_mb', '/n11817143/app/maxUploadSizeMb']),
+      loadParameterAny(['/a2/presigned_ttl_seconds', '/n11817143/app/preSignedUrlTTL'])
     ]);
 
     const secretValues = await loadSecret('n11817143-a2-secret');
